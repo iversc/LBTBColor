@@ -3,3 +3,7 @@ EXPORTS
 	SetTextboxColorsRGB
 	SetTextboxColors
 	ResetTextboxColors
+	SetTextboxTextColor
+	SetTextboxBGColor
+	SetTextboxTextColorRGB
+	SetTextboxBGColorRGB

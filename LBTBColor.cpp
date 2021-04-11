@@ -3,7 +3,7 @@
 
 #ifdef _DEBUG
 HWND hNotepadLog = NULL;
-VOID WriteDebug(LPCWSTR logData);
+VOID writeDebug(LPCWSTR logData);
 #endif
 
 #pragma comment(lib, "comctl32.lib")
@@ -40,7 +40,6 @@ LBTBC_API BOOL APIENTRY SetTextboxBGColorRGB(HWND hTextbox, DWORD bgRed, DWORD b
 {
 	return setTextboxColorsInternal(hTextbox, FALSE, 0, TRUE, RGB(bgRed, bgGreen, bgBlue));
 }
-
 
 BOOL subclassParent(HWND hTextbox)
 {
@@ -147,7 +146,7 @@ BOOL setTextboxColorsInternal(HWND hTextbox, BOOL useTextColor, COLORREF textCol
 		}
 	}
 
-	RedrawWindow(hParent, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+	RedrawWindow(hTextbox, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 	return TRUE;
 }
 
@@ -163,7 +162,12 @@ LBTBC_API BOOL APIENTRY ResetTextboxColors(HWND hTextbox)
 	RemoveProp(hTextbox, L"LBTBC_BGColor");
 	RemoveProp(hTextbox, L"LBTBC_TextColor");
 
-	RemoveWindowSubclass(hTextbox, LBTBSubProc, 0);
+	// If we fail at removing the subclass, we likely weren't subclassed
+	// in the first place.
+	if (!RemoveWindowSubclass(hTextbox, LBTBSubProc, 0))
+	{
+		return TRUE;
+	}
 
 	HWND hParent = GetParent(hTextbox);
 	DWORD* numTextboxes = NULL;
@@ -184,14 +188,14 @@ LBTBC_API BOOL APIENTRY ResetTextboxColors(HWND hTextbox)
 		WNDPROC currentWndProc = (WNDPROC)GetWindowLongPtrA(hParent, GWLP_WNDPROC);
 		if (currentWndProc == LBWinSubProc)
 		{
-			WNDPROC prevWndProc = (WNDPROC)GetPropA(hParent, "LBTBC_PrevWndProc");
+			WNDPROC prevWndProc = (WNDPROC)RemovePropA(hParent, "LBTBC_PrevWndProc");
 			SetWindowLongPtrA(hParent, GWLP_WNDPROC, (LONG_PTR)prevWndProc);
 			delete numTextboxes;
 		}
 
 	}
 
-	RedrawWindow(hParent, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+	RedrawWindow(hTextbox, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
 	return TRUE;
 }
 
@@ -209,24 +213,32 @@ LRESULT CALLBACK LBWinSubProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 		textColor = (COLORREF)GetProp(hTextbox, L"LBTBC_TextColor");
 		bgColor = (COLORREF)GetProp(hTextbox, L"LBTBC_BGColor");
 
+		// If we haven't set either property, then we're not managing this textbox,
+		// so this will end up passing through to the previous window procedure.
 		if (textColor != NULL || bgColor != NULL)
 		{
 			HBRUSH hBrush = NULL;
 
 			if (textColor)
 			{
+				// Decrement the color we incremented earlier
 				textColor--;
 				SetTextColor(hDC, textColor);
 			}
 
 			if (bgColor)
 			{
+				// Decrement the color we incremented earlier
 				bgColor--;
-				SetBkColor(hDC, bgColor);
-
-				hBrush = GetStockBrush(DC_BRUSH);
-				SelectBrush(hDC, hBrush);
 			}
+			else
+			{
+				bgColor = GetSysColor(COLOR_WINDOW);
+			}
+			SetBkColor(hDC, bgColor);
+
+			hBrush = GetStockBrush(DC_BRUSH);
+			SelectBrush(hDC, hBrush);
 
 			return (LRESULT)hBrush;
 		}
@@ -241,8 +253,10 @@ LRESULT CALLBACK LBWinSubProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 
 		DWORD* numTextboxes = (DWORD*)GetPropA(hWnd, "LBTBC_TBCount");
 		if (numTextboxes) delete numTextboxes;
+		RemovePropA(hWnd, "LBTBC_PrevWndProc");
 	}
 
+	// Pass on any message we didn't handle to the window procedure we replaced.
 	return CallWindowProcA(prevWndProc, hWnd, uMsg, wParam, lParam);
 }
 
@@ -254,11 +268,13 @@ LRESULT CALLBACK LBTBSubProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 	{
 		ResetTextboxColors(hWnd);
 	}
+
+	// Pass on window messages to the next procedure.
 	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
 #ifdef _DEBUG
-VOID WriteDebug(LPCWSTR logData)
+VOID writeDebug(LPCWSTR logData)
 {
 	if (!hNotepadLog)
 	{
