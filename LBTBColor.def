@@ -1,0 +1,5 @@
+LIBRARY LBTBColor
+EXPORTS
+	SetTextboxColorsRGB
+	SetTextboxColors
+	ResetTextboxColors
